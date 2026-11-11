@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Womodoro — Focus, Beautifully</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+/* ============================================================
+   WOMODORO — Design Tokens
+============================================================ */
+:root{
+  --bg:#0b0e14;
+  --bg-soft:#10141d;
+  --card:#141926;
+  --card-2:#1a2132;
+  --border:#242c40;
+  --text:#e7ecf5;
+  --muted:#8b94a9;
+  --accent:#ff6b6b;
+  --accent-2:#ffa94d;
+  --focus-glow:rgba(255,107,107,.25);
+  --break-color:#51cf66;
+  --radius:18px;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --trans:.28s cubic-bezier(.4,0,.2,1);
+}
+body.mode-short{ --accent:#51cf66; --focus-glow:rgba(81,207,102,.22);}
+body.mode-long { --accent:#4dabf7; --focus-glow:rgba(77,171,247,.22);}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  font-family:"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(255,107,107,.07), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(77,171,247,.06), transparent 60%),
+    var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  transition:background var(--trans);
+}
+button{font-family:inherit;cursor:pointer;color:inherit;border:none;background:none;}
+input{font-family:inherit;}
+::selection{background:var(--accent);color:#fff;}
+
+/* ============================================================
+   Layout
+============================================================ */
+.app{max-width:1120px;margin:0 auto;padding:28px 20px 60px;}
+header.topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  margin-bottom:28px;flex-wrap:wrap;
+}
+.brand{display:flex;align-items:center;gap:12px;font-size:1.5rem;font-weight:800;letter-spacing:-.5px;}
+.brand .tomato{font-size:1.9rem;filter:drop-shadow(0 4px 12px var(--focus-glow));animation:bob 4s ease-in-out infinite;}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.brand span em{font-style:normal;color:var(--accent);transition:color var(--trans);}
+.top-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.pill{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--card);border:1px solid var(--border);
+  padding:9px 16px;border-radius:999px;font-size:.9rem;font-weight:600;color:var(--text);
+  transition:transform var(--trans), border-color var(--trans), box-shadow var(--trans);
+}
+.pill:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 6px 18px var(--focus-glow);}
+.pill.streak{color:var(--accent-2);}
+.pill.icon-only{padding:9px 12px;}
+
+.grid{
+  display:grid;grid-template-columns:minmax(340px, 480px) 1fr;gap:22px;align-items:start;
+}
+@media (max-width:900px){ .grid{grid-template-columns:1fr;} }
+
+.card{
+  background:linear-gradient(180deg, var(--card) 0%, var(--bg-soft) 140%);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  padding:22px;
+  transition:border-color var(--trans), box-shadow var(--trans);
+}
+.card h2{font-size:.82rem;text-transform:uppercase;letter-spacing:1.6px;color:var(--muted);margin-bottom:14px;font-weight:700;}
+
+/* ============================================================
+   Timer
+============================================================ */
+.timer-card{display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden;}
+.timer-card::before{
+  content:"";position:absolute;inset:-40%;
+  background:radial-gradient(closest-side, var(--focus-glow), transparent 70%);
+  opacity:0;transition:opacity .8s ease;pointer-events:none;
+}
+.timer-card.running::before{opacity:1;animation:breathe 5s ease-in-out infinite;}
+@keyframes breathe{0%,100%{transform:scale(.92)}50%{transform:scale(1.05)}}
+
+.tabs{display:flex;gap:8px;background:var(--bg-soft);padding:6px;border-radius:999px;border:1px solid var(--border);margin-bottom:20px;}
+.tab{
+  padding:8px 18px;border-radius:999px;font-size:.86rem;font-weight:600;color:var(--muted);
+  transition:all var(--trans);white-space:nowrap;
+}
+.tab.active{background:var(--accent);color:#fff;box-shadow:0 4px 14px var(--focus-glow);}
+.tab:not(.active):hover{color:var(--text);}
+
+.ring-wrap{position:relative;width:min(300px, 78vw);aspect-ratio:1;}
+.ring-wrap svg{width:100%;height:100%;transform:rotate(-90deg);}
+.ring-track{fill:none;stroke:var(--card-2);stroke-width:10;}
+.ring-progress{
+  fill:none;stroke:var(--accent);stroke-width:10;stroke-linecap:round;
+  transition:stroke-dashoffset .5s linear, stroke var(--trans);
+  filter:drop-shadow(0 0 8px var(--focus-glow));
+}
+.ring-center{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  text-align:center;padding:0 18px;
+}
+.time-display{
+  font-size:clamp(2.6rem, 9vw, 3.6rem);font-weight:800;letter-spacing:1px;
+  font-variant-numeric:tabular-nums;line-height:1;
+}
+.session-task{
+  max-width:100%;font-size:.95rem;font-weight:600;color:var(--accent);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color var(--trans);
+}
+.session-task.empty{color:var(--muted);font-weight:400;font-style:italic;}
+.cycle-dots{display:flex;gap:6px;margin-top:2px;}
+.cycle-dots i{width:7px;height:7px;border-radius:50%;background:var(--card-2);transition:background var(--trans);}
+.cycle-dots i.done{background:var(--accent);}
+
+.controls{display:flex;gap:12px;margin-top:22px;align-items:center;}
+.btn{
+  border-radius:14px;font-weight:700;font-size:.95rem;padding:12px 22px;
+  transition:transform var(--trans), box-shadow var(--trans), background var(--trans), opacity var(--trans);
+  display:inline-flex;align-items:center;gap:8px;
+}
+.btn:active{transform:scale(.96);}
+.btn-primary{
+  background:var(--accent);color:#fff;min-width:130px;justify-content:center;
+  box-shadow:0 6px 20px var(--focus-glow);text-transform:uppercase;letter-spacing:1.2px;
+}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 26px var(--focus-glow);}
+.btn-ghost{background:var(--card-2);color:var(--muted);border:1px solid var(--border);padding:12px 16px;}
+.btn-ghost:hover{color:var(--text);border-color:var(--muted);transform:translateY(-2px);}
+.skip-btn{font-size:1.2rem;background:var(--card-2);border:1px solid var(--border);width:44px;height:44px;border-radius:14px;transition:all var(--trans);}
+.skip-btn:hover{transform:translateY(-2px);border-color:var(--accent);}
+
+/* ============================================================
+   Task input
+============================================================ */
+.task-row{display:flex;gap:10px;}
+.task-input{
+  flex:1;background:var(--bg-soft);border:1px solid var(--border);border-radius:12px;
+  color:var(--text);padding:12px 16px;font-size:.95rem;outline:none;
+  transition:border-color var(--trans), box-shadow var(--trans);
+}
+.task-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus-glow);}
+.task-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+.chip{
+  font-size:.78rem;font-weight:600;padding:6px 12px;border-radius:999px;
+  background:var(--card-2);border:1px solid var(--border);color:var(--muted);
+  transition:all var(--trans);
+}
+.chip:hover{color:var(--text);border-color:var(--accent);transform:translateY(-1px);}
+
+/* ============================================================
+   Ambience
+============================================================ */
+.amb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;}
+.amb-btn{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  background:var(--bg-soft);border:1px solid var(--border);border-radius:14px;
+  padding:16px 8px;font-size:.82rem;font-weight:600;color:var(--muted);
+  transition:all var(--trans);
+}
+.amb-btn .emoji{font-size:1.5rem;transition:transform var(--trans);}
+.amb-btn:hover{transform:translateY(-2px);border-color:var(--muted);color:var(--text);}
+.amb-btn.on{
+  border-color:var(--accent);color:var(--text);background:var(--card-2);
+  box-shadow:0 0 0 3px var(--focus-glow) inset, 0 6px 16px var(--focus-glow);
+}
+.amb-btn.on .emoji{transform:scale(1.15);animation:pulse 2.4s ease-in-out infinite;}
+@keyframes pulse{0%,100%{transform:scale(1.1)}50%{transform:scale(1.22)}}
+.vol-row{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:.8rem;color:var(--muted);}
+.vol-row input[type=range]{flex:1;accent-color:var(--accent);cursor:pointer;}
+
+/* ============================================================
+   Stats
+============================================================ */
+.stats-col{display:flex;flex-direction:column;gap:22px;}
+.stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;}
+.stat-box{
+  background:var(--bg-soft);border:1px solid var(--border);border-radius:14px;
+  padding:16px;text-align:center;transition:all var(--trans);
+}
+.stat-box:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 8px 20px var(--focus-glow);}
+.stat-box .big{font-size:1.7rem;font-weight:800;color:var(--text);line-height:1.2;}
+.stat-box .lbl{font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px;}
+.chart-holder{position:relative;height:240px;}
+.chart-empty{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:var(--muted);font-size:.9rem;font-style:italic;text-align:center;padding:0 20px;
+}
+
+/* Heatmap */
+.heatmap-scroll{overflow-x:auto;padding-bottom:6px;}
+.heatmap{display:grid;grid-template-rows:repeat(7,minmax(0,14px));grid-auto-columns:14px;grid-auto-flow:column;gap:4px;width:max-content;}
+.hm-cell{
+  width:14px;height:14px;border-radius:4px;background:var(--card-2);
+  transition:transform .15s ease;
+  position:relative;cursor:default;
+}
+.hm-cell.l1{background:rgba(255,107,107,.25);}
+.hm-cell.l2{background:rgba(255,107,107,.5);}
+.hm-cell.l3{background:rgba(255,107,107,.75);}
+.hm-cell.l4{background:#ff6b6b;}
+.hm-cell.today{outline:2px solid var(--text);outline-offset:1px;}
+.hm-cell:hover{transform:scale(1.35);}
+.hm-legend{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:.72rem;color:var(--muted);justify-content:flex-end;}
+.hm-legend .hm-cell{cursor:default;}
+.hm-legend .hm-cell:hover{transform:none;}
+.hm-months{display:grid;grid-auto-flow:column;grid-template-rows:1fr;gap:4px;width:max-content;margin-bottom:4px;font-size:.68rem;color:var(--muted);height:16px;}
+#hmTooltip{
+  position:fixed;z-index:60;pointer-events:none;background:var(--card-2);border:1px solid var(--border);
+  color:var(--text);font-size:.75rem;padding:6px 10px;border-radius:8px;box-shadow:var(--shadow);
+  opacity:0;transition:opacity .12s ease;white-space:nowrap;
+}
+
+/* ============================================================
+   Modals & overlays
+============================================================ */
+.overlay{
+  position:fixed;inset:0;background:rgba(5,7,11,.7);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;z-index:50;
+  opacity:0;pointer-events:none;transition:opacity var(--trans);
+}
+.overlay.open{opacity:1;pointer-events:auto;}
+.modal{
+  background:var(--card);border:1px solid var(--border);border-radius:20px;
+  width:min(440px, 92vw);padding:26px;box-shadow:var(--shadow);
+  transform:translateY(14px) scale(.97);transition:transform var(--trans);
+  max-height:88vh;overflow-y:auto;
+}
+.overlay.open .modal{transform:translateY(0) scale(1);}
+.modal h3{font-size:1.15rem;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;}
+.modal .close-x{font-size:1.3rem;color:var(--muted);width:34px;height:34px;border-radius:10px;transition:all var(--trans);}
+.modal .close-x:hover{background:var(--card-2);color:var(--text);}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:.4px;}
+.field input[type=number]{
+  width:100%;background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;
+  color:var(--text);padding:11px 14px;font-size:.95rem;outline:none;transition:border-color var(--trans);
+}
+.field input[type=number]:focus{border-color:var(--accent);}
+.switch-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;font-size:.9rem;font-weight:600;}
+.switch{position:relative;width:46px;height:26px;background:var(--card-2);border:1px solid var(--border);border-radius:999px;transition:background var(--trans);}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:all var(--trans);}
+.switch.on{background:var(--accent);border-color:var(--accent);}
+.switch.on::after{left:24px;background:#fff;}
+.modal-actions{display:flex;gap:10px;margin-top:20px;}
+.modal-actions .btn{flex:1;justify-content:center;}
+.danger-link{color:var(--muted);font-size:.8rem;text-decoration:underline;text-underline-offset:3px;}
+.danger-link:hover{color:var(--accent);}
+
+/* Focus Mode */
+.focus-overlay{
+  position:fixed;inset:0;z-index:40;background:var(--bg);
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:26px;
+  animation:fadeIn .4s ease;
+}
+.focus-overlay.open{display:flex;}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.focus-overlay .f-task{font-size:1.3rem;font-weight:700;color:var(--accent);max-width:80vw;text-align:center;}
+.focus-overlay .ring-wrap{width:min(460px, 84vw);}
+.focus-overlay .time-display{font-size:clamp(3.4rem, 12vw, 5.4rem);}
+.exit-focus{margin-top:8px;color:var(--muted);font-size:.85rem;padding:10px 20px;border:1px solid var(--border);border-radius:999px;transition:all var(--trans);}
+.exit-focus:hover{color:var(--text);border-color:var(--muted);}
+
+/* Toast */
+#toast{
+  position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--card-2);border:1px solid var(--border);color:var(--text);
+  padding:12px 22px;border-radius:999px;font-size:.88rem;font-weight:600;
+  box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:all .35s ease;z-index:70;
+  display:flex;gap:8px;align-items:center;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+footer{margin-top:40px;text-align:center;color:var(--muted);font-size:.78rem;letter-spacing:.4px;}
+.hidden-if-focus.hide-in-focus{}
+body.zen .hide-in-focus{display:none !important;}
+</style>
+</head>
+<body>
+
+<div class="app" id="appRoot">
+
+  <!-- ===================== TOP BAR ===================== -->
+  <header class="topbar hide-in-focus">
+    <div class="brand"><span class="tomato">🍅</span><span>Wo<em>modoro</em></span></div>
+    <div class="top-actions">
+      <span class="pill streak" id="streakPill" title="Consecutive days with ≥1 focus session">🔥 <b id="streakVal">0</b>&nbsp;day streak</span>
+      <button class="pill icon-only" id="zenBtn" title="Enter distraction-free Focus Mode">🧘 Zen</button>
+      <button class="pill icon-only" id="exportBtn" title="Download sessions as CSV">⬇️ Export</button>
+      <button class="pill icon-only" id="settingsBtn" title="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- ===================== LEFT COLUMN ===================== -->
+    <div style="display:flex;flex-direction:column;gap:22px;">
+
+      <!-- TIMER -->
+      <section class="card timer-card hide-in-focus" id="timerCard">
+        <div class="tabs" id="modeTabs">
+          <button class="tab active" data-mode="focus">Focus</button>
+          <button class="tab" data-mode="short">Short Break</button>
+          <button class="tab" data-mode="long">Long Break</button>
+        </div>
+
+        <div class="ring-wrap">
+          <svg viewBox="0 0 240 240">
+            <circle class="ring-track" cx="120" cy="120" r="110"></circle>
+            <circle class="ring-progress" id="ringProgress" cx="120" cy="120" r="110"></circle>
+          </svg>
+          <div class="ring-center">
+            <div class="time-display" id="timeDisplay">25:00</div>
+            <div class="session-task empty" id="activeTaskLabel">No task set</div>
+            <div class="cycle-dots" id="cycleDots"></div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="btn btn-ghost" id="resetBtn" title="Reset (R)">↺ Reset</button>
+          <button class="btn btn-primary" id="startPauseBtn">Start</button>
+          <button class="skip-btn" id="skipBtn" title="Skip to next phase">⏭</button>
+        </div>
+      </section>
+
+      <!-- TASK -->
+      <section class="card hide-in-focus">
+        <h2>✏️ Current Task</h2>
+        <div class="task-row">
+          <input class="task-input" id="taskInput" type="text" maxlength="60" placeholder='What are you working on? e.g. "SOM Exam Prep"' />
+        </div>
+        <div class="task-chips" id="taskChips"></div>
+      </section>
+
+      <!-- AMBIENCE -->
+      <section class="card hide-in-focus">
+        <h2>🎧 Ambient Sounds</h2>
+        <div class="amb-grid">
+          <button class="amb-btn" data-sound="lofi"><span class="emoji">🎹</span>Lo-fi</button>
+          <button class="amb-btn" data-sound="rain"><span class="emoji">🌧️</span>Rain</button>
+          <button class="amb-btn" data-sound="cafe"><span class="emoji">☕</span>Coffee Shop</button>
+        </div>
+        <div class="vol-row">
+          <span>🔈</span>
+          <input type="range" id="ambVolume" min="0" max="100" value="50" />
+          <span id="ambVolLabel" style="min-width:34px;text-align:right;">50%</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== RIGHT COLUMN: STATS ===================== -->
+    <div class="stats-col hide-in-focus" id="statsCol">
+      <section class="card">
+        <h2>📊 Statistics</h2>
+        <div class="stat-cards">
+          <div class="stat-box"><div class="big" id="weekHours">0h</div><div class="lbl">This Week</div></div>
+          <div class="stat-box"><div class="big" id="monthHours">0h</div><div class="lbl">This Month</div></div>
+          <div class="stat-box"><div class="big" id="totalSessions">0</div><div class="lbl">Total Sessions</div></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>🥧 Time by Subject</h2>
+        <div class="chart-holder">
+          <canvas id="subjectChart"></canvas>
+          <div class="chart-empty" id="chartEmpty">Complete a focus session with a task tag<br/>and your pie chart will appear here 🍰</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>🗓️ Focus Heatmap <span style="float:right;font-weight:400;text-transform:none;letter-spacing:0;">last 20 weeks</span></h2>
+        <div class="heatmap-scroll">
+          <div class="hm-months" id="hmMonths"></div>
+          <div class="heatmap" id="heatmap"></div>
+        </div>
+        <div class="hm-legend">
+          Less <span class="hm-cell"></span><span class="hm-cell l1"></span><span class="hm-cell l2"></span><span class="hm-cell l3"></span><span class="hm-cell l4"></span> More
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="hide-in-focus">Womodoro · pure HTML/CSS/JS · all data lives locally in your browser 🍅</footer>
+</div>
+
+<!-- ===================== SETTINGS MODAL ===================== -->
+<div class="overlay" id="settingsOverlay">
+  <div class="modal">
+    <h3>⚙️ Settings <button class="close-x" id="settingsClose">✕</button></h3>
+    <div class="field"><label>Focus duration (minutes)</label><input type="number" id="setFocus" min="1" max="180"></div>
+    <div class="field"><label>Short break (minutes)</label><input type="number" id="setShort" min="1" max="60"></div>
+    <div class="field"><label>Long break (minutes)</label><input type="number" id="setLong" min="1" max="90"></div>
+    <div class="field"><label>Long break every … sessions</label><input type="number" id="setInterval" min="2" max="12"></div>
+    <div class="switch-row">Auto-start breaks <button class="switch" id="setAutoBreak"></button></div>
+    <div class="switch-row">Auto-start next focus <button class="switch" id="setAutoFocus"></button></div>
+    <div class="switch-row">Sound chime on completion <button class="switch" id="setSound"></button></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="saveSettings">Save</button>
+      <button class="btn btn-ghost danger-link" id="clearData" style="flex:0 0 auto;">Clear all data…</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== FOCUS (ZEN) MODE ===================== -->
+<div class="focus-overlay" id="focusOverlay">
+  <div class="f-task" id="zenTask"></div>
+  <div class="ring-wrap">
+    <svg viewBox="0 0 240 240">
+      <circle class="ring-track" cx="120" cy="120" r="110"></circle>
+      <circle class="ring-progress" id="zenRing" cx="120" cy="120" r="110"></circle>
+    </svg>
+    <div class="ring-center">
+      <div class="time-display" id="zenTime">25:00</div>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="btn btn-ghost" id="zenReset">↺</button>
+    <button class="btn btn-primary" id="zenStartPause">Start</button>
+  </div>
+  <button class="exit-focus" id="exitZen">Exit Focus Mode (Esc)</button>
+</div>
+
+<div id="toast"></div>
+<div id="hmTooltip"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   WOMODORO — Vanilla JS engine
+   Storage keys: womodoro_settings, womodoro_sessions, womodoro_meta
+============================================================ */
+
+// ---------- Constants ----------
+const LS_SETTINGS = "womodoro_settings";
+const LS_SESSIONS = "womodoro_sessions";
+const LS_META     = "womodoro_meta";
+const CIRC = 2 * Math.PI * 110;              // ring circumference
+const HEATMAP_WEEKS = 20;
+// Ambient sounds: each source is a list of candidate URLs (free CDN placeholders).
+// If every URL fails (e.g. offline), the app falls back to a gentle synthesized loop.
+const AMB_SOURCES = {
+  lofi: [
+    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",   // mellow guitar loop
+    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3"
+  ],
+  rain: [
+    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",   // placeholder — swap with any rain field-recording mp3 you like
+    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
+  ],
+  cafe: [
+    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",   // placeholder — swap with any coffee-shop ambience mp3
+    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3"
+  ]
+};
+
+// ---------- State ----------
+let settings = loadJSON(LS_SETTINGS, {
+  focusTime: 25, shortBreak: 5, longBreak: 15,
+  longBreakInterval: 4, autoStartBreaks: false, autoStartFocus: false,
+  soundEnabled: true, theme: "dark", volume: 50
+});
+let sessions = loadJSON(LS_SESSIONS, []);           // [{id, task, duration, mode, date}]
+let meta     = loadJSON(LS_META, { cycleCount: 0, lastTask: "", recentTasks: [], ambience: {} });
+
+let mode = "focus";                                  // 'focus' | 'short' | 'long'
+let totalSeconds = settings.focusTime * 60;
+let remainingMs  = totalSeconds * 1000;
+let running = false;
+let tickHandle = null;
+let lastTs = null;
+
+// ---------- Helpers ----------
+function loadJSON(key, fallback){
+  try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; }
+  catch(e){ return fallback; }
+}
+function save(){
+  localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+  localStorage.setItem(LS_SESSIONS,  JSON.stringify(sessions));
+  localStorage.setItem(LS_META,      JSON.stringify(meta));
+}
+const $ = id => document.getElementById(id);
+function fmt(ms){
+  const s = Math.max(0, Math.ceil(ms/1000));
+  return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0");
+}
+function dayKey(d){
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function todayKey(){ return dayKey(new Date()); }
+
+// ---------- DOM refs ----------
+const els = {
+  ring: $("ringProgress"), zenRing: $("zenRing"),
+  time: $("timeDisplay"), zenTime: $("zenTime"),
+  startPause: $("startPauseBtn"), zenStartPause: $("zenStartPause"),
+  taskLabel: $("activeTaskLabel"), zenTask: $("zenTask"),
+  timerCard: $("timerCard"), dots: $("cycleDots"),
+  tabs: $("modeTabs"), taskInput: $("taskInput"), chips: $("taskChips"),
+  toast: $("toast"), tooltip: $("hmTooltip"),
+};
+els.ring.style.strokeDasharray = CIRC;
+els.zenRing.style.strokeDasharray = CIRC;
+
+// ============================================================
+//  TIMER ENGINE (timestamp based — drift free)
+// ============================================================
+function setMode(newMode, { keepRunning=false } = {}){
+  if (running && !keepRunning) stopTick();
+  mode = newMode;
+  totalSeconds = ({focus:settings.focusTime, short:settings.shortBreak, long:settings.longBreak})[mode] * 60;
+  remainingMs = totalSeconds * 1000;
+  running = false;
+  document.body.classList.remove("mode-short","mode-long");
+  if (mode === "short") document.body.classList.add("mode-short");
+  if (mode === "long")  document.body.classList.add("mode-long");
+  [...els.tabs.children].forEach(t => t.classList.toggle("active", t.dataset.mode === mode));
+  render();
+}
+
+function startTimer(){
+  if (running || remainingMs <= 0) return;
+  running = true;
+  lastTs = performance.now();
+  els.timerCard.classList.add("running");
+  tickHandle = setInterval(tick, 200);
+  ensureAudioCtx();
+  render();
+}
+function pauseTimer(){
+  if (!running) return;
+  running = false;
+  stopTick();
+  els.timerCard.classList.remove("running");
+  render();
+}
+function stopTick(){ clearInterval(tickHandle); tickHandle = null; }
+function resetTimer(){
+  pauseTimer();
+  remainingMs = totalSeconds * 1000;
+  render();
+}
+function toggleStartPause(){ running ? pauseTimer() : startTimer(); }
+
+function tick(){
+  const now = performance.now();
+  remainingMs -= (now - lastTs);
+  lastTs = now;
+  if (remainingMs <= 0){
+    remainingMs = 0;
+    pauseTimer();
+    completeSession();
+  }
+  render();
+}
+
+function completeSession(){
+  playChime();
+  notify(`${mode === "focus" ? "Focus session complete 🎉" : "Break over ⏰"} — Womodoro`);
+
+  if (mode === "focus"){
+    const task = (els.taskInput.value.trim()) || "General Focus";
+    sessions.push({
+      id: Date.now(),
+      task,
+      duration: settings.focusTime,
+      mode: "focus",
+      date: new Date().toISOString()
+    });
+    meta.cycleCount++;
+    meta.lastTask = task;
+    meta.recentTasks = [task, ...meta.recentTasks.filter(t => t !== task)].slice(0,6);
+    save();
+    refreshStats();
+    renderChips();
+
+    const nextMode = (meta.cycleCount % settings.longBreakInterval === 0) ? "long" : "short";
+    setMode(nextMode, { keepRunning:true });
+    if (settings.autoStartBreaks) startTimer();
+  } else {
+    setMode("focus", { keepRunning:true });
+    if (settings.autoStartFocus) startTimer();
+  }
+}
+
+function skipPhase(){
+  const wasFullCompletion = (remainingMs <= 0);   // completion already logged the session — don't double-count
+  pauseTimer();
+  if (mode === "focus"){
+    // count partial focus time honestly: elapsed minutes rounded down, min 0 → only log if >0
+    const elapsedMin = wasFullCompletion ? 0 : Math.floor((totalSeconds*1000 - remainingMs)/60000);
+    if (elapsedMin >= 1){
+      const task = (els.taskInput.value.trim()) || "General Focus";
+      sessions.push({ id: Date.now(), task, duration: elapsedMin, mode:"focus", date:new Date().toISOString() });
+      save(); refreshStats(); renderChips();
+      toast(`Logged ${elapsedMin} min of skipped focus 📝`);
+    }
+    setMode((meta.cycleCount+1) % settings.longBreakInterval === 0 ? "long" : "short");
+  } else {
+    setMode("focus");
+  }
+}
+
+// ---------- Render ----------
+function render(){
+  const frac = totalSeconds ? (remainingMs / 1000) / totalSeconds : 0;
+  const offset = CIRC * (1 - frac);
+  els.ring.style.strokeDashoffset = offset;
+  els.zenRing.style.strokeDashoffset = offset;
+  els.time.textContent = fmt(remainingMs);
+  els.zenTime.textContent = fmt(remainingMs);
+  els.startPause.textContent = running ? "Pause" : (remainingMs < totalSeconds*1000 ? "Resume" : "Start");
+  els.zenStartPause.textContent = els.startPause.textContent;
+
+  const task = els.taskInput.value.trim();
+  els.taskLabel.textContent = task || "No task set";
+  els.taskLabel.classList.toggle("empty", !task);
+  els.zenTask.textContent = task ? `🎯 ${task}` : "🎯 No task set";
+
+  document.title = `${fmt(remainingMs)} ${running ? "▶" : "⏸"} · Womodoro`;
+
+  // cycle dots
+  const n = settings.longBreakInterval;
+  const done = meta.cycleCount % n;
+  els.dots.innerHTML = Array.from({length:n}, (_,i)=>`<i class="${i<done?"done":""}"></i>`).join("");
+}
+
+// ============================================================
+//  AUDIO — chime (WebAudio synth) + ambience (CDN loops)
+// ============================================================
+let audioCtx = null;
+function ensureAudioCtx(){
+  if (!audioCtx){
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){}
+  }
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+}
+function playChime(){
+  if (!settings.soundEnabled) return;
+  ensureAudioCtx();
+  if (!audioCtx) return;
+  // gentle three-note descending marimba-ish chime
+  const notes = [ [880,0], [659.25,.18], [523.25,.36] ];
+  const t0 = audioCtx.currentTime;
+  notes.forEach(([freq, delay])=>{
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = "sine"; o.frequency.value = freq;
+    const m = audioCtx.createOscillator(), mg = audioCtx.createGain(); // soft shimmer harmonic
+    m.type = "sine"; m.frequency.value = freq*2; mg.gain.value = 0.0001;
+    g.gain.setValueAtTime(0.0001, t0+delay);
+    g.gain.exponentialRampToValueAtTime(0.22, t0+delay+0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+delay+1.1);
+    mg.gain.setValueAtTime(0.0001, t0+delay);
+    mg.gain.exponentialRampToValueAtTime(0.05, t0+delay+0.03);
+    mg.gain.exponentialRampToValueAtTime(0.0001, t0+delay+0.9);
+    o.connect(g).connect(audioCtx.destination);
+    m.connect(mg).connect(audioCtx.destination);
+    o.start(t0+delay); o.stop(t0+delay+1.2);
+    m.start(t0+delay); m.stop(t0+delay+1.0);
+  });
+}
+function notify(msg){
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "granted") new Notification(msg, { silent:true });
+  else if (Notification.permission !== "denied") Notification.requestPermission();
+}
+
+// --- Ambience players (lazy: audio only loads when the user toggles a sound on) ---
+const ambPlayers = {};
+function makeAmbPlayer(key){
+  const el = document.querySelector(`.amb-btn[data-sound="${key}"]`);
+  const p = { el, urls: AMB_SOURCES[key], idx: -1, audio: null, synth: null };
+  ambPlayers[key] = p;
+  return p;
+}
+function ambStart(key){
+  const p = ambPlayers[key];
+  if (!p.audio){                                   // first activation: create element from current candidate
+    p.idx = (p.idx + 1) % p.urls.length;
+    p.audio = new Audio(p.urls[p.idx]);
+    p.audio.loop = true;
+    p.audio.volume = (settings.volume||50)/100;
+    p.audio.addEventListener("error", ()=>{        // CDN link dead → try next, then fall back to synth
+      p.audio = null;
+      if (p.idx < p.urls.length - 1) ambStart(key);
+      else startSynthLoop(key);
+    });
+  }
+  p.audio.play().catch(()=>{ stopAmbVisual(key); toast("⚠️ Browser blocked audio — click again"); });
+}
+function startSynthLoop(key){                      // graceful offline fallback: soft filtered noise pad
+  ensureAudioCtx(); if (!audioCtx){ stopAmbVisual(key); return; }
+  const len = 2 * audioCtx.sampleRate;
+  const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<len;i++) d[i] = (Math.random()*2-1) * (key==="rain" ? .6 : key==="cafe" ? .35 : .25);
+  const src = audioCtx.createBufferSource(); src.buffer = buf; src.loop = true;
+  const filt = audioCtx.createBiquadFilter(); filt.type = "lowpass";
+  filt.frequency.value = key==="rain" ? 1400 : key==="cafe" ? 700 : 480;
+  const g = audioCtx.createGain(); g.gain.value = (settings.volume||50)/100 * (key==="lofi" ? .12 : .25);
+  src.connect(filt).connect(g).connect(audioCtx.destination); src.start();
+  ambPlayers[key].synth = { src, g };
+  toast("🔌 Offline? Using synthesized ambience instead");
+}
+function ambStop(key){
+  const p = ambPlayers[key];
+  if (p.audio) p.audio.pause();
+  if (p.synth){ try{ p.synth.src.stop(); }catch(e){} p.synth = null; }
+}
+function stopAmbVisual(key){
+  const p = ambPlayers[key];
+  p.el.classList.remove("on"); delete meta.ambience[key]; save();
+}
+document.querySelectorAll(".amb-btn").forEach(btn=>{
+  const key = btn.dataset.sound;
+  makeAmbPlayer(key);
+  if (meta.ambience && meta.ambience[key]) btn.classList.add("on");   // visual state restored lazily below
+  btn.addEventListener("click", ()=>{
+    ensureAudioCtx();
+    const p = ambPlayers[key];
+    if (p.el.classList.contains("on")){
+      ambStop(key); p.el.classList.remove("on"); delete meta.ambience[key];
+    } else {
+      Object.keys(ambPlayers).forEach(k=>{ if(k!==key && ambPlayers[k].el.classList.contains("on")){ ambStop(k); ambPlayers[k].el.classList.remove("on"); delete meta.ambience[k]; } });
+      ambStart(key); p.el.classList.add("on"); meta.ambience[key]=true;
+    }
+    save();
+  });
+});
+// Auto-resume saved ambience after reload (needs a gesture in some browsers; harmless if blocked)
+Object.keys(ambPlayers).forEach(key=>{
+  if (meta.ambience && meta.ambience[key]){
+    const kick = ()=>{ ambStart(key); window.removeEventListener("pointerdown", kick); window.removeEventListener("keydown", kick); };
+    window.addEventListener("pointerdown", kick); window.addEventListener("keydown", kick);
+  }
+});
+$("ambVolume").value = settings.volume ?? 50;
+$("ambVolLabel").textContent = $("ambVolume").value + "%";
+$("ambVolume").addEventListener("input", e=>{
+  settings.volume = +e.target.value;
+  $("ambVolLabel").textContent = e.target.value + "%";
+  Object.values(ambPlayers).forEach(p => {
+    if (p.audio) p.audio.volume = settings.volume/100;
+    if (p.synth) p.synth.g.gain.value = settings.volume/100 * .25;
+  });
+  save();
+});
+
+// ============================================================
+//  STATISTICS — streak, hours, pie chart, heatmap
+// ============================================================
+function focusSessions(){ return sessions.filter(s => s.mode === "focus"); }
+
+function computeStreak(){
+  const days = new Set(focusSessions().map(s => dayKey(new Date(s.date))));
+  let streak = 0;
+  const cursor = new Date();
+  // today doesn't break the streak if not yet logged — start counting from yesterday in that case
+  if (!days.has(dayKey(cursor))) cursor.setDate(cursor.getDate()-1);
+  while (days.has(dayKey(cursor))){ streak++; cursor.setDate(cursor.getDate()-1); }
+  return streak;
+}
+function minutesBetween(start, end){
+  return focusSessions()
+    .filter(s => { const d = new Date(s.date); return d >= start && d < end; })
+    .reduce((a,s)=>a+s.duration, 0);
+}
+function weekStart(){
+  const d = new Date(); const day = (d.getDay()+6)%7; // Monday start
+  d.setHours(0,0,0,0); d.setDate(d.getDate()-day); return d;
+}
+function monthStart(){ const d = new Date(); d.setHours(0,0,0,0); d.setDate(1); return d; }
+
+function fmtH(mins){
+  const h = mins/60;
+  return h >= 10 ? Math.round(h)+"h" : (Math.round(h*10)/10)+"h";
+}
+
+// --- Pie chart ---
+let chart = null;
+const PIE_COLORS = ["#ff6b6b","#4dabf7","#51cf66","#ffd43b","#cc5de8","#ff922b","#20c997","#f06595","#748ffc","#a9e34b"];
+function renderChart(){
+  const totals = {};
+  focusSessions().forEach(s=>{ totals[s.task] = (totals[s.task]||0) + s.duration; });
+  const entries = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  $("chartEmpty").style.display = entries.length ? "none" : "flex";
+  if (!window.Chart) return;
+  const data = {
+    labels: entries.map(e=>e[0]),
+    datasets:[{
+      data: entries.map(e=>Math.round(e[1]/60*10)/10),
+      backgroundColor: entries.map((_,i)=>PIE_COLORS[i%PIE_COLORS.length]),
+      borderColor: "#141926", borderWidth: 3, hoverOffset: 10,
+    }]
+  };
+  if (chart){ chart.data = data; chart.update(); return; }
+  chart = new Chart($("subjectChart"), {
+    type: "doughnut",
+    data,
+    options: {
+      responsive:true, maintainAspectRatio:false, cutout:"58%",
+      plugins:{
+        legend:{ position:"right", labels:{ color:"#c6cede", boxWidth:12, borderRadius:6, font:{size:12} } },
+        tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.parsed} h` } }
+      },
+      animation:{ animateRotate:true, duration:700 },
+    }
+  });
+}
+
+// --- Heatmap (GitHub-style, last 20 weeks) ---
+function buildHeatmap(){
+  const perDay = {};
+  focusSessions().forEach(s=>{ const k = dayKey(new Date(s.date)); perDay[k]=(perDay[k]||0)+s.duration; });
+  const hm = $("heatmap"), months = $("hmMonths");
+  hm.innerHTML = ""; months.innerHTML = "";
+
+  const end = new Date(); end.setHours(0,0,0,0);
+  // Monday of the week that contains HEATMAP_WEEKS-1 weeks back from today.
+  // Weekday math via getDay() (not setDate) so DST boundaries can't shift it.
+  const mondayOffset = (end.getDay()+6)%7;                       // 0=Mon … 6=Sun
+  const firstMonday = new Date(end.getFullYear(), end.getMonth(),
+                              end.getDate() - mondayOffset - (HEATMAP_WEEKS-1)*7);
+  const tK = todayKey();
+
+  let lastMonth = -1;
+  for (let col = 0; col < HEATMAP_WEEKS; col++){
+    for (let wd = 0; wd < 7; wd++){
+      const cellDate = new Date(firstMonday.getFullYear(), firstMonday.getMonth(),
+                                firstMonday.getDate() + col*7 + wd);
+      if (cellDate > end) continue;                              // future days in current week → skip
+      const cell = document.createElement("div");
+      const k = dayKey(cellDate), mins = perDay[k]||0;
+      const lvl = mins===0?0 : mins<15?1 : mins<45?2 : mins<120?3 : 4;
+      cell.className = `hm-cell${lvl?(" l"+lvl):""}${k===tK?" today":""}`;
+      cell.dataset.info = `${k} · ${mins} min focused`;
+      hm.appendChild(cell);
+    }
+    // month label for this column (shown when the month of the column's Monday changes)
+    const colDate = new Date(firstMonday.getFullYear(), firstMonday.getMonth(), firstMonday.getDate() + col*7);
+    const lbl = document.createElement("span");
+    if (colDate.getMonth() !== lastMonth){
+      lbl.textContent = colDate.toLocaleString("en",{month:"short"});
+      lastMonth = colDate.getMonth();
+    }
+    months.appendChild(lbl);
+  }
+}
+$("heatmap").addEventListener("mousemove", e=>{
+  const c = e.target.closest(".hm-cell"); if(!c){ $("hmTooltip").style.opacity=0; return; }
+  const tt = $("hmTooltip");
+  tt.textContent = c.dataset.info; tt.style.opacity = 1;
+  tt.style.left = (e.clientX + 12) + "px"; tt.style.top = (e.clientY - 30) + "px";
+});
+$("heatmap").addEventListener("mouseleave", ()=> $("hmTooltip").style.opacity = 0);
+
+function refreshStats(){
+  $("streakVal").textContent = computeStreak();
+  $("weekHours").textContent  = fmtH(minutesBetween(weekStart(), new Date(Date.now()+864e5)));
+  $("monthHours").textContent = fmtH(minutesBetween(monthStart(), new Date(Date.now()+864e5)));
+  $("totalSessions").textContent = focusSessions().length;
+  renderChart();
+  buildHeatmap();
+}
+
+// ============================================================
+//  TASK CHIPS
+// ============================================================
+function renderChips(){
+  els.chips.innerHTML = meta.recentTasks.map(t=>`<button class="chip">${escapeHtml(t)}</button>`).join("");
+  els.chips.querySelectorAll(".chip").forEach(c=>
+    c.addEventListener("click", ()=>{ els.taskInput.value = c.textContent; meta.lastTask = c.textContent; save(); render(); })
+  );
+}
+function escapeHtml(s){ return s.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
+
+// ============================================================
+//  SETTINGS MODAL
+// ============================================================
+const overlay = $("settingsOverlay");
+function openSettings(){
+  $("setFocus").value = settings.focusTime;
+  $("setShort").value = settings.shortBreak;
+  $("setLong").value = settings.longBreak;
+  $("setInterval").value = settings.longBreakInterval;
+  $("setAutoBreak").classList.toggle("on", settings.autoStartBreaks);
+  $("setAutoFocus").classList.toggle("on", settings.autoStartFocus);
+  $("setSound").classList.toggle("on", settings.soundEnabled);
+  overlay.classList.add("open");
+}
+$("settingsBtn").onclick = openSettings;
+$("settingsClose").onclick = ()=> overlay.classList.remove("open");
+overlay.addEventListener("click", e=>{ if(e.target===overlay) overlay.classList.remove("open"); });
+["setAutoBreak","setAutoFocus","setSound"].forEach(id=>
+  $(id).addEventListener("click", ()=> $(id).classList.toggle("on")));
+
+$("saveSettings").onclick = ()=>{
+  const clamp=(v,min,max,d)=>Math.min(max,Math.max(min,parseInt(v)||d));
+  settings.focusTime = clamp($("setFocus").value,1,180,25);
+  settings.shortBreak= clamp($("setShort").value,1,60,5);
+  settings.longBreak = clamp($("setLong").value,1,90,15);
+  settings.longBreakInterval = clamp($("setInterval").value,2,12,4);
+  settings.autoStartBreaks = $("setAutoBreak").classList.contains("on");
+  settings.autoStartFocus  = $("setAutoFocus").classList.contains("on");
+  settings.soundEnabled    = $("setSound").classList.contains("on");
+  save();
+  if (!running) setMode(mode); else render();
+  refreshStats();
+  overlay.classList.remove("open");
+  toast("✅ Settings saved");
+};
+$("clearData").onclick = ()=>{
+  if (confirm("Delete ALL Womodoro data (sessions, stats, settings)? This cannot be undone.")){
+    localStorage.removeItem(LS_SESSIONS); localStorage.removeItem(LS_META); localStorage.removeItem(LS_SETTINGS);
+    location.reload();
+  }
+};
+
+// ============================================================
+//  CSV EXPORT
+// ============================================================
+$("exportBtn").onclick = ()=>{
+  if (!sessions.length){ toast("Nothing to export yet — complete a session first!"); return; }
+  const rows = [["id","task","duration_minutes","mode","date_iso"],
+    ...sessions.map(s=>[s.id, `"${String(s.task).replace(/"/g,'""')}"`, s.duration, s.mode, s.date])];
+  const blob = new Blob([rows.map(r=>r.join(",")).join("\n")], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `womodoro-sessions-${todayKey()}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast("⬇️ CSV exported");
+};
+
+// ============================================================
+//  FOCUS (ZEN) MODE
+// ============================================================
+const zen = $("focusOverlay");
+function enterZen(){
+  document.body.classList.add("zen");
+  zen.classList.add("open");
+  render();
+  const req = document.documentElement.requestFullscreen?.bind(document.documentElement);
+  req?.().catch(()=>{});            // full-screen attempt (user gesture keeps it allowed)
+}
+function exitZen(){
+  document.body.classList.remove("zen");
+  zen.classList.remove("open");
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(()=>{});
+}
+$("zenBtn").onclick = enterZen;
+$("exitZen").onclick = exitZen;
+$("zenStartPause").onclick = toggleStartPause;
+$("zenReset").onclick = resetTimer;
+
+// ============================================================
+//  EVENT WIRING
+// ============================================================
+els.tabs.addEventListener("click", e=>{
+  const t = e.target.closest(".tab"); if(!t) return;
+  if (running && !confirm("Timer is running — switch mode and lose this session?")) return;
+  setMode(t.dataset.mode);
+});
+$("startPauseBtn").onclick = ()=>{ ensureAudioCtx(); toggleStartPause(); };
+$("resetBtn").onclick = resetTimer;
+$("skipBtn").onclick = skipPhase;
+els.taskInput.addEventListener("input", ()=>{ meta.lastTask = els.taskInput.value.trim(); save(); render(); });
+document.addEventListener("keydown", e=>{
+  if (e.target.tagName === "INPUT") return;
+  if (e.code === "Space"){ e.preventDefault(); ensureAudioCtx(); toggleStartPause(); }
+  if (e.key.toLowerCase() === "r") resetTimer();
+  if (e.key === "Escape"){ zen.classList.contains("open") ? exitZen() : overlay.classList.remove("open"); }
+});
+let toastH;
+function toast(msg){
+  els.toast.textContent = msg;
+  els.toast.classList.add("show");
+  clearTimeout(toastH); toastH = setTimeout(()=> els.toast.classList.remove("show"), 2600);
+}
+
+// ============================================================
+//  BOOT
+// ============================================================
+els.taskInput.value = meta.lastTask || "";
+setMode("focus");
+refreshStats();
+renderChips();
+render();
+</script>
+</body>
+</html>
